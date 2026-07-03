@@ -22,4 +22,23 @@ const getExpenses = async (req, res) => {
     }
 };
 
-export default { addExpense, getExpenses };
+const updateExpense = async (req, res) => {
+    try {
+        const result = await expenseService.updateExpense(req.user.userId, req.params.id, req.body);
+
+        return res.status(200).json({ success: true, message: "Expense updated successfully", data: result });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+const deleteExpense = async (req, res) => {
+    try {
+        const result = await expenseService.deleteExpense(req.user.userId, req.params.id);
+        return res.status(200).json({ success: true, message: "Expense deleted successfully", data: result });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+export default { addExpense, getExpenses, updateExpense, deleteExpense };

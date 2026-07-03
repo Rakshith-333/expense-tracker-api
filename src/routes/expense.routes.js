@@ -8,5 +8,7 @@ import { addExpenseValidation } from "../validators/expense.validator.js";
 
 router.post("/", authenticate, addExpenseValidation, validate, expenseController.addExpense);
 router.get("/", authenticate, expenseController.getExpenses);
+router.put("/:id", authenticate, addExpenseValidation, validate, expenseController.updateExpense);
+router.delete("/:id", authenticate, expenseController.deleteExpense);
 
 export default router;

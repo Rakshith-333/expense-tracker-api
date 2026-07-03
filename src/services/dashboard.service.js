@@ -130,4 +130,160 @@ const getSummary = async (userId) => {
   };
 };
 
-export default { getSummary };
+const getCategorySummary = async (userId) => {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+
+  const now = new Date();
+
+  // Start of month (UTC)
+  const startOfMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+  );
+
+  // Start of next month (UTC)
+  const endOfMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+  );
+
+  const categorySummary = await Expense.aggregate([
+    {
+      $match: {
+        userId: userObjectId,
+        expenseDate: {
+          $gte: startOfMonth,
+          $lt: endOfMonth,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$category",
+        totalAmount: { $sum: "$amount" },
+      },
+    },
+    {
+      $sort: { totalAmount: -1 },
+    },
+  ]);
+
+  const totalExpenses = categorySummary.reduce(
+    (acc, curr) => acc + curr.totalAmount,
+    0
+  );
+
+  return categorySummary.map((category) => ({
+    category: category._id,
+    totalAmount: category.totalAmount,
+    percentage:
+      totalExpenses > 0
+        ? Math.round((category.totalAmount / totalExpenses) * 100)
+        : 0,
+  }));
+};
+
+const getRecentExpenses = async (userId) => {
+    return await Expense.find({ userId }).sort({ expenseDate: -1, createdAt: -1 }).limit(5).select("category amount description expenseDate paymentMode");
+};
+
+const getMonthlyTrend = async (userId) => {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const currentYear = new Date().getFullYear();
+
+  const results = await Expense.aggregate([
+    {
+      $match: {
+        userId: userObjectId,
+        expenseDate: {
+          $gte: new Date(currentYear, 0, 1),
+          $lt: new Date(currentYear + 1, 0, 1),
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { $month: "$expenseDate" },
+        totalAmount: { $sum: "$amount" },
+      },
+    },
+    {
+      $sort: { _id: 1 },
+    },
+  ]);
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const monthlyTrend = months.map((month, index) => {
+    const monthData = results.find((result) => result._id === index + 1);
+    return {
+      month,
+      totalAmount: monthData ? monthData.totalAmount : 0,
+    };
+  });
+
+  return monthlyTrend;
+};
+
+const getTopCategories = async (userId) => {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+
+  const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const totalExpenseResult = await Expense.aggregate([
+    {
+      $match: {
+        userId: userObjectId,
+        expenseDate: {
+          $gte: firstDayOfMonth,
+          $lt: tomorrow,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalExpense: { $sum: "$amount" },
+      },
+    },
+  ]);
+
+  const totalExpense = totalExpenseResult[0]?.totalExpense || 0;
+
+  const result = await Expense.aggregate([
+    {
+      $match: {
+        userId: userObjectId,
+        expenseDate: {
+          $gte: firstDayOfMonth,
+          $lt: tomorrow,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$category",
+        totalAmount: { $sum: "$amount" },
+      },
+    },
+    {
+      $sort: { totalAmount: -1 },
+    },
+    {
+      $limit: 1, // Get the top category
+    },
+  ]);
+
+  if (result.length === 0) {
+    return { category: null, totalAmount: 0 };
+  }
+
+  return {
+    category: result[0]._id,
+    totalAmount: result[0].totalAmount,
+    percentage: result[0].totalAmount > 0 ? Math.round((result[0].totalAmount / totalExpense) * 100) : 0,
+  };
+};
+
+export default { getSummary, getCategorySummary, getRecentExpenses, getMonthlyTrend, getTopCategories };

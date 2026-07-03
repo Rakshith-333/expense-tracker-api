@@ -7,5 +7,6 @@ import validate from "../middleware/validation.middleware.js";
 import { addExpenseValidation } from "../validators/expense.validator.js";  
 
 router.post("/", authenticate, addExpenseValidation, validate, expenseController.addExpense);
+router.get("/", authenticate, expenseController.getExpenses);
 
 export default router;

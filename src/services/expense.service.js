@@ -5,4 +5,11 @@ const addExpense = async (userId, expenseData) => {
   return expense;
 }
 
-export default { addExpense };
+const getExpenses = async (userId, { page, limit, skip }) => {
+  const skipValue = (page - 1) * limit;
+  const expenses = await Expense.find({ userId }).sort({ expenseDate: -1, createdAt: -1 }).skip(skipValue).limit(limit);
+  const totalExpenses = await Expense.countDocuments({ userId });
+  return { expenses, pagination: { totalExpenses, currentPage: page, pageSize: limit, totalPages: Math.ceil(totalExpenses / limit) } };
+}
+
+export default { addExpense, getExpenses };

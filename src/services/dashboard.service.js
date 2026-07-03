@@ -29,11 +29,33 @@ const getSummary = async (userId) => {
     )
   );
 
+  const firstDayOfPreviousMonth = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth() - 1,
+      1
+    )
+  );
+
+  const lastDayOfPreviousMonth = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      1
+    )
+  );
+
   // First day of current week (Monday - UTC)
   const firstDayOfWeek = new Date(today);
+  const firstDayOfPreviousWeek = new Date(firstDayOfWeek);
+  firstDayOfPreviousWeek.setUTCDate(firstDayOfPreviousWeek.getUTCDate() - 7);
+
+  const lastDayOfPreviousWeek = new Date(firstDayOfWeek);
+
   const day = firstDayOfWeek.getUTCDay();
   const diff = day === 0 ? 6 : day - 1;
   firstDayOfWeek.setUTCDate(firstDayOfWeek.getUTCDate() - diff);
+
 
   console.log("Today:", today.toISOString());
   console.log("Tomorrow:", tomorrow.toISOString());
@@ -121,12 +143,75 @@ const getSummary = async (userId) => {
     },
   });
 
+  const PreviousMonthExpenses = await Expense.aggregate([
+    {
+      $match: {
+        userId: userObjectId,
+        expenseDate: {
+          $gte: firstDayOfPreviousMonth,
+          $lt: lastDayOfPreviousMonth,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalAmount: {
+          $sum: "$amount",
+        },
+      },
+    },
+  ]);
+
+  const previousWeeksExpenses = await Expense.aggregate([
+    {
+      $match: {
+        userId: userObjectId,
+        expenseDate: {
+          $gte: firstDayOfPreviousWeek,
+          $lt: lastDayOfPreviousWeek,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalAmount: {
+          $sum: "$amount",
+        },
+      },
+    },
+  ]);
+
+  const getPercentageChange = (current, previous) => {
+    if (previous === 0) {
+        return { percentage: 0, trend: "neutral" };
+    }
+
+    const perccentage = math.round(((current - previous) / previous) * 100);
+    return {
+        percentage: Math.abs(perccentage),
+        trend: perccentage > 0 ? "up" : "down"
+    };
+  }
+
+  const currentMonth = totalThisMonth[0]?.totalAmount || 0;
+  const previousMonth = PreviousMonthExpenses[0]?.totalAmount || 0;
+
+  const currentweek = thisWeeksExpenses[0]?.totalAmount || 0;
+  const previousweek = previousWeeksExpenses[0]?.totalAmount || 0;
+
+  const monthcomparison = getPercentageChange(currentMonth, previousMonth);
+  const weekcomparison = getPercentageChange(currentweek, previousweek);
+
   return {
-    totalThisMonth: totalThisMonth[0]?.totalAmount || 0,
+    totalThisMonth: { amount: currentMonth, percentage: monthcomparison.percentage, trend: monthcomparison.trend },
     todaysExpenses: todaysExpenses[0]?.totalAmount || 0,
     todaysTransactions,
-    thisWeeksExpenses: thisWeeksExpenses[0]?.totalAmount || 0,
+    thisWeeksExpenses: { amount: currentweek, percentage: weekcomparison.percentage, trend: weekcomparison.trend },
     thisMonthsTransactions,
+    // PreviousMonthExpenses: PreviousMonthExpenses[0]?.totalAmount || 0,
+    // previousWeeksExpenses: previousWeeksExpenses[0]?.totalAmount || 0,
   };
 };
 

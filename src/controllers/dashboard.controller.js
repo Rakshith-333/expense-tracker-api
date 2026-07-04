@@ -39,7 +39,9 @@ const getSummary = async (req, res) => {
 
 const getCategorySummary = async (req, res) => {
     try {
-        const categorySummary = await dashboardService.getCategorySummary(req.user.userId);
+        const userId = req.user.userId;
+        const period = req.query.period || "month";
+        const categorySummary = await dashboardService.getCategorySummary(userId, period);
         return res.status(200).json({ success: true, message: "Category summary retrieved successfully", data: categorySummary });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });

@@ -188,7 +188,7 @@ const getSummary = async (userId) => {
         return { percentage: 0, trend: "neutral" };
     }
 
-    const perccentage = math.round(((current - previous) / previous) * 100);
+    const perccentage = Math.round(((current - previous) / previous) * 100);
     return {
         percentage: Math.abs(perccentage),
         trend: perccentage > 0 ? "up" : "down"
@@ -215,28 +215,121 @@ const getSummary = async (userId) => {
   };
 };
 
-const getCategorySummary = async (userId) => {
+// static category summary for current month
+// const getCategorySummary = async (userId) => {
+//   const userObjectId = new mongoose.Types.ObjectId(userId);
+
+//   const now = new Date();
+
+//   // Start of month (UTC)
+//   const startOfMonth = new Date(
+//     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+//   );
+
+//   // Start of next month (UTC)
+//   const endOfMonth = new Date(
+//     Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+//   );
+
+//   const categorySummary = await Expense.aggregate([
+//     {
+//       $match: {
+//         userId: userObjectId,
+//         expenseDate: {
+//           $gte: startOfMonth,
+//           $lt: endOfMonth,
+//         },
+//       },
+//     },
+//     {
+//       $group: {
+//         _id: "$category",
+//         totalAmount: { $sum: "$amount" },
+//       },
+//     },
+//     {
+//       $sort: { totalAmount: -1 },
+//     },
+//   ]);
+
+//   const totalExpenses = categorySummary.reduce(
+//     (acc, curr) => acc + curr.totalAmount,
+//     0
+//   );
+
+//   return categorySummary.map((category) => ({
+//     category: category._id,
+//     totalAmount: category.totalAmount,
+//     percentage:
+//       totalExpenses > 0
+//         ? Math.round((category.totalAmount / totalExpenses) * 100)
+//         : 0,
+//   }));
+// };
+
+
+
+// dynamic category summary based on period (today, week, month)
+const getCategorySummary = async (userId, period = "month") => {
   const userObjectId = new mongoose.Types.ObjectId(userId);
 
   const now = new Date();
 
-  // Start of month (UTC)
-  const startOfMonth = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-  );
+  let startDate;
+  let endDate;
 
-  // Start of next month (UTC)
-  const endOfMonth = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
-  );
+  // ======================
+  // TODAY
+  // ======================
+  if (period === "today") {
+    startDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    );
 
+    endDate = new Date(startDate);
+    endDate.setUTCDate(endDate.getUTCDate() + 1);
+  }
+
+  // ======================
+  // WEEK
+  // ======================
+  else if (period === "week") {
+    startDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    );
+
+    const day = startDate.getUTCDay();
+    const diff = day === 0 ? 6 : day - 1;
+
+    startDate.setUTCDate(startDate.getUTCDate() - diff);
+
+    endDate = new Date(startDate);
+    endDate.setUTCDate(endDate.getUTCDate() + 7);
+  }
+
+  // ======================
+  // MONTH (DEFAULT)
+  // ======================
+  else {
+    startDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+    );
+
+    endDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+    );
+  }
+
+  // ======================
+  // AGGREGATION
+  // ======================
   const categorySummary = await Expense.aggregate([
     {
       $match: {
         userId: userObjectId,
         expenseDate: {
-          $gte: startOfMonth,
-          $lt: endOfMonth,
+          $gte: startDate,
+          $lt: endDate,
         },
       },
     },
@@ -251,11 +344,17 @@ const getCategorySummary = async (userId) => {
     },
   ]);
 
+  // ======================
+  // TOTAL CALCULATION
+  // ======================
   const totalExpenses = categorySummary.reduce(
     (acc, curr) => acc + curr.totalAmount,
     0
   );
 
+  // ======================
+  // RESPONSE FORMAT
+  // ======================
   return categorySummary.map((category) => ({
     category: category._id,
     totalAmount: category.totalAmount,
@@ -265,6 +364,7 @@ const getCategorySummary = async (userId) => {
         : 0,
   }));
 };
+
 
 const getRecentExpenses = async (userId) => {
     return await Expense.find({ userId }).sort({ expenseDate: -1, createdAt: -1 }).limit(5).select("category amount description expenseDate paymentMode");

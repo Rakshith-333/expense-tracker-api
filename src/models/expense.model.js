@@ -14,7 +14,7 @@ const expenseSchema = new mongoose.Schema({
   category: {
     type: String,
     required: true,
-    enum: ["Food", "Transport", "Entertainment", "Utilities", "Health", "Other"]
+    enum: ["Food & Dining", "Transportation", "Housing", "Shopping","Education", "Entertainment", "Travel", "Family", "Financial", "Work", "Personal", "Charity", "Health", "Other"]
   },
   description: {
     type: String,
@@ -28,7 +28,7 @@ const expenseSchema = new mongoose.Schema({
   paymentMode: {
     type: String,
     required: true,
-    enum: ["Cash", "Credit Card", "Debit Card", "Online Payment", "UPI", "Other"]
+    enum: ["UPI", "Cash", "Credit Card", "Debit Card", "Net Banking", "Mobile Wallet", "Bank Transfer (NEFT/RTGS/IMPS)", "Cheque"]
   },
   notes: {
     type: String,

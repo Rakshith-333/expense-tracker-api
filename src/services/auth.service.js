@@ -3,7 +3,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const register = async (userData) => {
-  const { name, email, password } = userData;
+  const { name, email, password, confirmPassword } = userData;
+
+  if(password !== confirmPassword){
+    throw new Error("Passwords do not match");
+  }
 
   // Check if user already exists
   const existingUser = await User.findOne({ email });

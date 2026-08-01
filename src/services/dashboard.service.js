@@ -1,217 +1,132 @@
 import Expense from "../models/expense.model.js";
+import User from "../models/user.model.js";
 import mongoose from "mongoose";
+
+const getPercentageChange = (current, previous) => {
+  if (previous === 0) {
+    return { percentage: 0, trend: "neutral" };
+  }
+
+  const percentage = Math.round(((current - previous) / previous) * 100);
+  return {
+    percentage: Math.abs(percentage),
+    trend: percentage > 0 ? "up" : "down",
+  };
+};
+
+const getBudgetStatus = (utilization) => {
+  if (utilization >= 101) return "Exceeded";
+  if (utilization >= 81) return "Critical";
+  if (utilization >= 51) return "Warning";
+  return "Good";
+};
+
+const getForecastStatus = (predictedSpend, monthlyBudget) => {
+  if (monthlyBudget <= 0) return "Within Budget";
+  return predictedSpend > monthlyBudget ? "Likely to Exceed Budget" : "Within Budget";
+};
 
 const getSummary = async (userId) => {
   const userObjectId = new mongoose.Types.ObjectId(userId);
+  const user = await User.findById(userId).select("monthlyBudget").lean();
 
-  // Current UTC date
   const now = new Date();
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const tomorrowUtc = new Date(todayUtc);
+  tomorrowUtc.setUTCDate(tomorrowUtc.getUTCDate() + 1);
 
-  // Start of today (UTC)
-  const today = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate()
-    )
-  );
+  const firstDayOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const firstDayOfNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const firstDayOfPreviousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const lastDayOfPreviousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
-  // Start of tomorrow (UTC)
-  const tomorrow = new Date(today);
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const firstDayOfWeek = new Date(todayUtc);
+  const day = firstDayOfWeek.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  firstDayOfWeek.setUTCDate(firstDayOfWeek.getUTCDate() - diff);
 
-  // First day of current month (UTC)
-  const firstDayOfMonth = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      1
-    )
-  );
-
-  const firstDayOfPreviousMonth = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth() - 1,
-      1
-    )
-  );
-
-  const lastDayOfPreviousMonth = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      1
-    )
-  );
-
-  // First day of current week (Monday - UTC)
-  const firstDayOfWeek = new Date(today);
   const firstDayOfPreviousWeek = new Date(firstDayOfWeek);
   firstDayOfPreviousWeek.setUTCDate(firstDayOfPreviousWeek.getUTCDate() - 7);
 
   const lastDayOfPreviousWeek = new Date(firstDayOfWeek);
 
-  const day = firstDayOfWeek.getUTCDay();
-  const diff = day === 0 ? 6 : day - 1;
-  firstDayOfWeek.setUTCDate(firstDayOfWeek.getUTCDate() - diff);
-
-
-  console.log("Today:", today.toISOString());
-  console.log("Tomorrow:", tomorrow.toISOString());
-  console.log("First Day Of Week:", firstDayOfWeek.toISOString());
-  console.log("First Day Of Month:", firstDayOfMonth.toISOString());
-
-  // Total This Month
-  const totalThisMonth = await Expense.aggregate([
-    {
-      $match: {
-        userId: userObjectId,
-        expenseDate: {
-          $gte: firstDayOfMonth,
-          $lt: tomorrow,
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalAmount: {
-          $sum: "$amount",
-        },
-      },
-    },
+  const [totalThisMonthResult, todaysExpensesResult, todaysTransactions, thisWeeksExpensesResult, thisMonthsTransactions, previousMonthExpensesResult, previousWeeksExpensesResult] = await Promise.all([
+    Expense.aggregate([
+      { $match: { userId: userObjectId, expenseDate: { $gte: firstDayOfMonth, $lt: firstDayOfNextMonth } } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+    ]),
+    Expense.aggregate([
+      { $match: { userId: userObjectId, expenseDate: { $gte: todayUtc, $lt: tomorrowUtc } } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+    ]),
+    Expense.countDocuments({
+      userId: userObjectId,
+      expenseDate: { $gte: todayUtc, $lt: tomorrowUtc },
+    }),
+    Expense.aggregate([
+      { $match: { userId: userObjectId, expenseDate: { $gte: firstDayOfWeek, $lt: tomorrowUtc } } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+    ]),
+    Expense.countDocuments({
+      userId: userObjectId,
+      expenseDate: { $gte: firstDayOfMonth, $lt: firstDayOfNextMonth },
+    }),
+    Expense.aggregate([
+      { $match: { userId: userObjectId, expenseDate: { $gte: firstDayOfPreviousMonth, $lt: lastDayOfPreviousMonth } } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+    ]),
+    Expense.aggregate([
+      { $match: { userId: userObjectId, expenseDate: { $gte: firstDayOfPreviousWeek, $lt: lastDayOfPreviousWeek } } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+    ]),
   ]);
 
-  // Today's Expenses
-  const todaysExpenses = await Expense.aggregate([
-    {
-      $match: {
-        userId: userObjectId,
-        expenseDate: {
-          $gte: today,
-          $lt: tomorrow,
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalAmount: {
-          $sum: "$amount",
-        },
-      },
-    },
-  ]);
+  const currentMonth = totalThisMonthResult[0]?.totalAmount || 0;
+  const currentWeek = thisWeeksExpensesResult[0]?.totalAmount || 0;
+  const previousMonth = previousMonthExpensesResult[0]?.totalAmount || 0;
+  const previousWeek = previousWeeksExpensesResult[0]?.totalAmount || 0;
+  const monthlyBudget = Number(user?.monthlyBudget || 0);
 
-  // Today's Transactions
-  const todaysTransactions = await Expense.countDocuments({
-    userId: userObjectId,
-    expenseDate: {
-      $gte: today,
-      $lt: tomorrow,
-    },
-  });
+  const monthComparison = getPercentageChange(currentMonth, previousMonth);
+  const weekComparison = getPercentageChange(currentWeek, previousWeek);
 
-  // This Week's Expenses
-  const thisWeeksExpenses = await Expense.aggregate([
-    {
-      $match: {
-        userId: userObjectId,
-        expenseDate: {
-          $gte: firstDayOfWeek,
-          $lt: tomorrow,
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalAmount: {
-          $sum: "$amount",
-        },
-      },
-    },
-  ]);
+  const remainingBalance = Math.max(monthlyBudget - currentMonth, 0);
+  const budgetUtilization = monthlyBudget > 0 ? Math.round((currentMonth / monthlyBudget) * 100) : 0;
+  const budgetStatus = getBudgetStatus(budgetUtilization);
 
-  // This Month's Transactions
-  const thisMonthsTransactions = await Expense.countDocuments({
-    userId: userObjectId,
-    expenseDate: {
-      $gte: firstDayOfMonth,
-      $lt: tomorrow,
-    },
-  });
+  const remainingDays = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate() - now.getUTCDate();
+  const dailyLimit = remainingBalance > 0 && remainingDays > 0 ? Math.round(remainingBalance / remainingDays) : 0;
 
-  const PreviousMonthExpenses = await Expense.aggregate([
-    {
-      $match: {
-        userId: userObjectId,
-        expenseDate: {
-          $gte: firstDayOfPreviousMonth,
-          $lt: lastDayOfPreviousMonth,
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalAmount: {
-          $sum: "$amount",
-        },
-      },
-    },
-  ]);
+  const daysElapsed = now.getUTCDate();
+  const averageDailySpend = daysElapsed > 0 ? currentMonth / daysElapsed : 0;
+  const predictedSpend = Math.round(averageDailySpend * new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate());
+  const forecastStatus = getForecastStatus(predictedSpend, monthlyBudget);
 
-  const previousWeeksExpenses = await Expense.aggregate([
-    {
-      $match: {
-        userId: userObjectId,
-        expenseDate: {
-          $gte: firstDayOfPreviousWeek,
-          $lt: lastDayOfPreviousWeek,
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalAmount: {
-          $sum: "$amount",
-        },
-      },
-    },
-  ]);
-
-  const getPercentageChange = (current, previous) => {
-    if (previous === 0) {
-        return { percentage: 0, trend: "neutral" };
-    }
-
-    const perccentage = Math.round(((current - previous) / previous) * 100);
-    return {
-        percentage: Math.abs(perccentage),
-        trend: perccentage > 0 ? "up" : "down"
-    };
-  }
-
-  const currentMonth = totalThisMonth[0]?.totalAmount || 0;
-  const previousMonth = PreviousMonthExpenses[0]?.totalAmount || 0;
-
-  const currentweek = thisWeeksExpenses[0]?.totalAmount || 0;
-  const previousweek = previousWeeksExpenses[0]?.totalAmount || 0;
-
-  const monthcomparison = getPercentageChange(currentMonth, previousMonth);
-  const weekcomparison = getPercentageChange(currentweek, previousweek);
+  const comparison = {
+    previousMonth,
+    currentMonth,
+    difference: Math.abs(previousMonth - currentMonth),
+    trend: previousMonth > currentMonth ? "saved" : previousMonth < currentMonth ? "overspent" : "neutral",
+  };
 
   return {
-    totalThisMonth: { amount: currentMonth, percentage: monthcomparison.percentage, trend: monthcomparison.trend },
-    todaysExpenses: todaysExpenses[0]?.totalAmount || 0,
+    monthlyBudget,
+    totalSpent: currentMonth,
+    remainingBalance,
+    budgetUtilization,
+    budgetStatus,
+    remainingDays,
+    dailyLimit,
+    totalThisMonth: { amount: currentMonth, percentage: monthComparison.percentage, trend: monthComparison.trend },
+    todaysExpenses: todaysExpensesResult[0]?.totalAmount || 0,
     todaysTransactions,
-    thisWeeksExpenses: { amount: currentweek, percentage: weekcomparison.percentage, trend: weekcomparison.trend },
+    thisWeeksExpenses: { amount: currentWeek, percentage: weekComparison.percentage, trend: weekComparison.trend },
     thisMonthsTransactions,
-    // PreviousMonthExpenses: PreviousMonthExpenses[0]?.totalAmount || 0,
-    // previousWeeksExpenses: previousWeeksExpenses[0]?.totalAmount || 0,
+    comparison,
+    forecast: {
+      predictedSpend,
+      status: forecastStatus,
+    },
   };
 };
 

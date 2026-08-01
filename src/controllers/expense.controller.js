@@ -22,6 +22,15 @@ const getExpenses = async (req, res) => {
     }
 };
 
+const getExpenseById = async (req, res) => {
+    try {
+        const result = await expenseService.getExpenseById(req.user.userId, req.params.id);
+        return res.status(200).json({ success: true, message: "Expense retrieved successfully", data: result });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 const updateExpense = async (req, res) => {
     try {
         const result = await expenseService.updateExpense(req.user.userId, req.params.id, req.body);
@@ -41,4 +50,4 @@ const deleteExpense = async (req, res) => {
     }
 };
 
-export default { addExpense, getExpenses, updateExpense, deleteExpense };
+export default { addExpense, getExpenses, getExpenseById, updateExpense, deleteExpense };

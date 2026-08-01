@@ -12,6 +12,16 @@ const getExpenses = async (userId, { page, limit, skip }) => {
   return { expenses, pagination: { totalExpenses, currentPage: page, pageSize: limit, totalPages: Math.ceil(totalExpenses / limit) } };
 }
 
+const getExpenseById = async (userId, expenseId) => {
+  const expense = await Expense.findOne({ _id: expenseId, userId });
+
+  if (!expense) {
+    throw new Error("Expense not found or you do not have permission to view this expense");
+  }
+
+  return expense;
+};
+
 const updateExpense = async (userId, expenseId, expenseData) => {
   const expense = await Expense.findOneAndUpdate({ _id: expenseId, userId }, { amount: expenseData.amount, description: expenseData.description, category: expenseData.category, expenseDate: expenseData.expenseDate, paymentMode: expenseData.paymentMode, notes: expenseData.notes }, { new: true, runValidators: true });
 
@@ -30,4 +40,4 @@ const deleteExpense = async (userId, expenseId) => {
   return expense;
 };
 
-export default { addExpense, getExpenses, updateExpense, deleteExpense };
+export default { addExpense, getExpenses, getExpenseById, updateExpense, deleteExpense };

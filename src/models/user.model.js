@@ -25,6 +25,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  mobileNumber: {
+    type: String,
+    default: null,
+    trim: true
+  },
   status: {
     type: String,
     enum: ["active", "inactive"],
